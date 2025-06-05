@@ -3,17 +3,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 
-// Get current directory name (for relative paths)
+// Resolve current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Function to generate speech using Coqui TTS via CLI
+// Generate TTS audio using Coqui
 async function convertTextToSpeech({ text, fileName }) {
-  const outputPath = path.isAbsolute(fileName)
-    ? fileName
-    : path.join(__dirname, "public", "output", fileName);
+  const outputPath = path.join(__dirname, "public", "output", "audios", fileName);
 
-  // Ensure output directory exists
+  // Ensure the output directory exists
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
   return new Promise((resolve, reject) => {
@@ -31,12 +29,20 @@ async function convertTextToSpeech({ text, fileName }) {
   });
 }
 
-// Dummy fallback for getVoices
+// Simulated getVoices for UI dropdown or API call
 async function getVoices() {
   return [
     {
-      name: "LJSpeech",
+      name: "LJSpeech (female, English)",
       id: "tts_models/en/ljspeech/tacotron2-DDC",
+    },
+    {
+      name: "VCTK (multi-speaker)",
+      id: "tts_models/en/vctk/vits",
+    },
+    {
+      name: "Multilingual (YourTTS)",
+      id: "tts_models/multilingual/multi-dataset/your_tts",
     },
   ];
 }

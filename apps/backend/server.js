@@ -1,61 +1,76 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { openAIChain, parser } from "./modules/openAI.mjs";
+import { generateMessages, parser } from "./modules/openAI.mjs";
 import { lipSync } from "./modules/lip-sync.mjs";
 import { sendDefaultMessages, defaultResponse } from "./modules/defaultMessages.mjs";
 import { convertAudioToText } from "./modules/whisper.mjs";
 
+// ✅ Replaced ElevenLabs import with Coqui TTS
+import { getVoices } from "./modules/tts.mjs";
+
 dotenv.config();
 
-const elevenLabsApiKey = process.env.ELEVEN_LABS_API_KEY;
-
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(cors());
 const port = 3000;
 
+// --- ROUTE: Get available voices ---
 app.get("/voices", async (req, res) => {
-  res.send(await voice.getVoices(elevenLabsApiKey));
+  try {
+    const voices = await getVoices(); // No longer needs API key
+    res.send(voices);
+  } catch (error) {
+    console.error("Error fetching voices:", error.message, error.stack);
+    res.status(500).send({ error: "Failed to fetch voices" });
+  }
 });
 
+// --- ROUTE: Text to Speech with Lip Sync ---
 app.post("/tts", async (req, res) => {
-  const userMessage = await req.body.message;
-  const defaultMessages = await sendDefaultMessages({ userMessage });
-  if (defaultMessages) {
-    res.send({ messages: defaultMessages });
-    return;
-  }
-  let openAImessages;
   try {
-    openAImessages = await openAIChain.invoke({
-      question: userMessage,
-      format_instructions: parser.getFormatInstructions(),
-    });
+    const userMessage = req.body.message;
+    if (!userMessage) {
+      return res.status(400).send({ error: "Missing message in request" });
+    }
+
+    const defaultMessages = await sendDefaultMessages({ userMessage });
+    if (defaultMessages) {
+      return res.send({ messages: defaultMessages });
+    }
+
+    const messages = await generateMessages(userMessage);
+    const syncedMessages = await lipSync(messages);
+
+    res.send({ messages: syncedMessages });
   } catch (error) {
-    openAImessages = defaultResponse;
+    console.error("Error in /tts:", error.message, error.stack);
+    res.status(500).send({ error: "Internal Server Error" });
   }
-  openAImessages = await lipSync({ messages: openAImessages.messages });
-  res.send({ messages: openAImessages });
 });
 
+// --- ROUTE: Speech to Text (audio input) ---
 app.post("/sts", async (req, res) => {
-  const base64Audio = req.body.audio;
-  const audioData = Buffer.from(base64Audio, "base64");
-  const userMessage = await convertAudioToText({ audioData });
-  let openAImessages;
   try {
-    openAImessages = await openAIChain.invoke({
-      question: userMessage,
-      format_instructions: parser.getFormatInstructions(),
-    });
+    const base64Audio = req.body.audio;
+    if (!base64Audio) {
+      return res.status(400).send({ error: "Missing audio in request" });
+    }
+
+    const audioData = Buffer.from(base64Audio, "base64");
+    const userMessage = await convertAudioToText({ audioData });
+
+    const messages = await generateMessages(userMessage);
+    const syncedMessages = await lipSync(messages);
+
+    res.send({ messages: syncedMessages });
   } catch (error) {
-    openAImessages = defaultResponse;
+    console.error("Error in /sts:", error.message, error.stack);
+    res.status(500).send({ error: "Internal Server Error" });
   }
-  openAImessages = await lipSync({ messages: openAImessages.messages });
-  res.send({ messages: openAImessages });
 });
 
 app.listen(port, () => {
-  console.log(`Jack are listening on port ${port}`);
+  console.log(`Jack is listening on port ${port}`);
 });
